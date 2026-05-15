@@ -2,6 +2,10 @@
 
 Standalone X-Plane plugin for FSC Stick Shaker hardware.
 
+Version: `0.2`
+
+Plugin signature: `com.fscstickshaker`
+
 The plugin is intended for the Zibo 737 and drives the stick shaker from X-Plane's stall warning state. It is independent from the FSC throttle quadrant plugin and does not require CPFlight integration.
 
 ## Features
@@ -46,14 +50,14 @@ Preferences are stored in:
 Default preferences:
 
 ```ini
-shaker.enabled=0
-shaker.transport=serial
+shaker.enabled=1
+shaker.transport=tcp
 shaker.serial.port=
 shaker.serial.baud=115200
 shaker.serial.data_bits=8
 shaker.serial.parity=none
 shaker.serial.stop_bits=1
-shaker.tcp.ip=192.168.0.10
+shaker.tcp.ip=192.168.1.199
 shaker.tcp.port=12345
 shaker.debug=0
 ```

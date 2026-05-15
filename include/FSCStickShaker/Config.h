@@ -20,14 +20,14 @@ struct SerialConfig {
 };
 
 struct TcpConfig {
-    std::string ip = "192.168.0.10";
+    std::string ip = "192.168.1.199";
     int port = 12345;
 };
 
 struct Config {
-    bool enabled = false;
+    bool enabled = true;
     bool debug = false;
-    TransportKind transport = TransportKind::Serial;
+    TransportKind transport = TransportKind::Tcp;
     SerialConfig serial;
     TcpConfig tcp;
 };

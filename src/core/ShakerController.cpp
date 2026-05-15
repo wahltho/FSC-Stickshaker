@@ -2,9 +2,15 @@
 
 #include "FSCStickShaker/Log.h"
 
+#include <chrono>
 #include <utility>
 
 namespace fsc::stickshaker {
+namespace {
+
+constexpr auto kTransportRetryInterval = std::chrono::seconds(5);
+
+} // namespace
 
 void ShakerController::configure(Config config)
 {
@@ -13,6 +19,7 @@ void ShakerController::configure(Config config)
     config_ = std::move(config);
     transport_ = makeTransport(config_);
     lastSentState_.reset();
+    nextTransportOpenAttempt_ = {};
 
     if (!config_.enabled) {
         logInfo("controller configured but disabled");
@@ -22,6 +29,7 @@ void ShakerController::configure(Config config)
     if (!transport_->open(config_)) {
         logInfo("transport failed to open: " + transport_->name());
         transport_.reset();
+        nextTransportOpenAttempt_ = std::chrono::steady_clock::now() + kTransportRetryInterval;
     }
 }
 
@@ -69,12 +77,18 @@ const Config& ShakerController::config() const
 bool ShakerController::sendState(bool active, bool force)
 {
     if (!transport_) {
+        const auto now = std::chrono::steady_clock::now();
+        if (!force && now < nextTransportOpenAttempt_) {
+            return false;
+        }
         transport_ = makeTransport(config_);
         if (!transport_->open(config_)) {
             logInfo("transport failed to open: " + transport_->name());
             transport_.reset();
+            nextTransportOpenAttempt_ = now + kTransportRetryInterval;
             return false;
         }
+        nextTransportOpenAttempt_ = {};
     }
 
     if (!force && lastSentState_.has_value() && *lastSentState_ == active) {
@@ -85,6 +99,10 @@ bool ShakerController::sendState(bool active, bool force)
     const bool sent = transport_->send(active);
     if (sent) {
         lastSentState_ = active;
+    } else {
+        transport_->close();
+        transport_.reset();
+        nextTransportOpenAttempt_ = std::chrono::steady_clock::now() + kTransportRetryInterval;
     }
     return sent;
 }

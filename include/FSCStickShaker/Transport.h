@@ -17,17 +17,6 @@ public:
     virtual std::string name() const = 0;
 };
 
-class LoggingTransport final : public ITransport {
-public:
-    bool open(const Config& config) override;
-    void close() override;
-    bool send(bool active) override;
-    std::string name() const override;
-
-private:
-    TransportKind selectedTransport_ = TransportKind::LogOnly;
-};
-
 std::unique_ptr<ITransport> makeTransport(const Config& config);
 
 } // namespace fsc::stickshaker

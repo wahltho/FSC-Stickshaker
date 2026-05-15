@@ -20,11 +20,11 @@ int main()
     saveDefaultConfig(path);
 
     auto config = loadConfig(path);
-    assert(config.enabled == false);
-    assert(config.transport == TransportKind::Serial);
+    assert(config.enabled == true);
+    assert(config.transport == TransportKind::Tcp);
     assert(config.serial.baud == 115200);
 
-    config.enabled = true;
+    config.transport = TransportKind::LogOnly;
     ShakerController controller;
     controller.configure(config);
     controller.updateTrigger(false);

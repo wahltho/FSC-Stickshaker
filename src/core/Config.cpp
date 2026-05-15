@@ -118,14 +118,14 @@ Config loadConfig(const std::filesystem::path& path)
     Config config;
     const auto values = readKeyValues(path);
 
-    config.enabled = parseBool(getString(values, "shaker.enabled", "0"), config.enabled);
+    config.enabled = parseBool(getString(values, "shaker.enabled", "1"), config.enabled);
     config.debug = parseBool(getString(values, "shaker.debug", "0"), config.debug);
     config.transport = transportKindFromString(getString(values, "shaker.transport", toString(config.transport)));
 
     config.serial.port = getString(values, "shaker.serial.port", config.serial.port);
     config.serial.baud = parseInt(getString(values, "shaker.serial.baud", ""), config.serial.baud);
     config.serial.dataBits = parseInt(getString(values, "shaker.serial.data_bits", ""), config.serial.dataBits);
-    config.serial.parity = getString(values, "shaker.serial.parity", config.serial.parity);
+    config.serial.parity = lower(getString(values, "shaker.serial.parity", config.serial.parity));
     config.serial.stopBits = parseInt(getString(values, "shaker.serial.stop_bits", ""), config.serial.stopBits);
 
     config.tcp.ip = getString(values, "shaker.tcp.ip", config.tcp.ip);

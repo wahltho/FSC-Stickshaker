@@ -59,8 +59,13 @@ add_library(fsc_stickshaker_core STATIC
 
 target_include_directories(fsc_stickshaker_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
+if(WIN32)
+    target_link_libraries(fsc_stickshaker_core PUBLIC ws2_32)
+endif()
+
 add_library(fsc_stickshaker SHARED src/plugin/XPlanePlugin.cpp)
 target_link_libraries(fsc_stickshaker PRIVATE fsc_stickshaker_core)
+target_include_directories(fsc_stickshaker PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 configure_xplm_target(fsc_stickshaker)
 
 if(APPLE)

@@ -3,6 +3,7 @@
 #include "FSCStickShaker/Config.h"
 #include "FSCStickShaker/Transport.h"
 
+#include <chrono>
 #include <memory>
 #include <optional>
 
@@ -26,6 +27,7 @@ private:
     Config config_;
     std::unique_ptr<ITransport> transport_;
     std::optional<bool> lastSentState_;
+    std::chrono::steady_clock::time_point nextTransportOpenAttempt_ {};
 };
 
 } // namespace fsc::stickshaker

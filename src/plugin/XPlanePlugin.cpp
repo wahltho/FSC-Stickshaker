@@ -1,3 +1,5 @@
+#include "plugin_config.h"
+
 #include "FSCStickShaker/Config.h"
 #include "FSCStickShaker/Log.h"
 #include "FSCStickShaker/ShakerController.h"
@@ -21,10 +23,12 @@ namespace {
 using fsc::stickshaker::Config;
 using fsc::stickshaker::ShakerController;
 
-constexpr const char* kPluginName = "FSC Stick Shaker";
-constexpr const char* kPluginSignature = "de.wahltho.fsc.stickshaker";
-constexpr const char* kPluginDescription = "Standalone FSC Stick Shaker driver";
-constexpr const char* kPrefsFileName = "FSCStickShaker.prf";
+constexpr const char* kPluginVersion = PLUGIN_VERSION;
+constexpr const char* kPluginName = PLUGIN_NAME;
+constexpr const char* kPluginSignature = PLUGIN_SIGNATURE;
+constexpr const char* kPluginDescription = PLUGIN_DESC;
+constexpr const char* kPrefsFileName = PLUGIN_PREFS_FILE;
+constexpr const char* kCommandPrefix = PLUGIN_COMMAND_PREFIX;
 constexpr const char* kTriggerDataRefPath = "sim/cockpit2/annunciators/stall_warning";
 constexpr int kDependencyRetryIntervalSec = 5;
 constexpr bool kDeferUntilDatarefs = true;
@@ -161,7 +165,7 @@ float flightLoopCallback(float, float, int, void*)
             const bool ready = resolveRuntimeDependencies(true);
             gNextResolveAttempt = now + std::chrono::seconds(kDependencyRetryIntervalSec);
             if (!ready && gController.config().enabled && kDeferUntilDatarefs) {
-                gController.forceOff();
+                gController.updateTrigger(false);
                 return 0.5f;
             }
         }
@@ -195,10 +199,11 @@ int commandHandler(XPLMCommandRef command, XPLMCommandPhase phase, void*)
 
 void registerCommands()
 {
-    gReloadPrefsCommand = XPLMCreateCommand("FSCStickShaker/reload_prefs", "Reload FSC Stick Shaker prefs");
-    gTestOnCommand = XPLMCreateCommand("FSCStickShaker/test_on", "Force FSC Stick Shaker on");
-    gTestOffCommand = XPLMCreateCommand("FSCStickShaker/test_off", "Force FSC Stick Shaker off");
-    gTestPulseCommand = XPLMCreateCommand("FSCStickShaker/test_pulse", "Pulse FSC Stick Shaker");
+    const std::string prefix = kCommandPrefix;
+    gReloadPrefsCommand = XPLMCreateCommand((prefix + "/reload_prefs").c_str(), "Reload FSC Stick Shaker prefs");
+    gTestOnCommand = XPLMCreateCommand((prefix + "/test_on").c_str(), "Force FSC Stick Shaker on");
+    gTestOffCommand = XPLMCreateCommand((prefix + "/test_off").c_str(), "Force FSC Stick Shaker off");
+    gTestPulseCommand = XPLMCreateCommand((prefix + "/test_pulse").c_str(), "Pulse FSC Stick Shaker");
 
     XPLMRegisterCommandHandler(gReloadPrefsCommand, commandHandler, 0, nullptr);
     XPLMRegisterCommandHandler(gTestOnCommand, commandHandler, 0, nullptr);
@@ -228,9 +233,14 @@ PLUGIN_API int XPluginStart(char* outName, char* outSignature, char* outDescript
 {
     std::strncpy(outName, kPluginName, 255);
     std::strncpy(outSignature, kPluginSignature, 255);
-    std::strncpy(outDescription, kPluginDescription, 255);
+    const std::string description = std::string(kPluginDescription) + " (v" + kPluginVersion + ")";
+    std::strncpy(outDescription, description.c_str(), 255);
+    outName[255] = '\0';
+    outSignature[255] = '\0';
+    outDescription[255] = '\0';
 
     fsc::stickshaker::setLogSink(xplaneLog);
+    xplaneLog(std::string("Plugin version ") + kPluginVersion);
     registerCommands();
     return 1;
 }
