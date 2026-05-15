@@ -25,6 +25,10 @@ constexpr const char* kPluginName = "FSC Stick Shaker";
 constexpr const char* kPluginSignature = "de.wahltho.fsc.stickshaker";
 constexpr const char* kPluginDescription = "Standalone FSC Stick Shaker driver";
 constexpr const char* kPrefsFileName = "FSCStickShaker.prf";
+constexpr const char* kTriggerDataRefPath = "sim/cockpit2/annunciators/stall_warning";
+constexpr int kDependencyRetryIntervalSec = 5;
+constexpr bool kDeferUntilDatarefs = true;
+constexpr std::array<const char*, 2> kZiboTailnums {"ZB738", "B738"};
 
 ShakerController gController;
 std::filesystem::path gPrefsPath;
@@ -36,22 +40,6 @@ XPLMCommandRef gTestPulseCommand = nullptr;
 XPLMDataRef gTailnumDataRef = nullptr;
 bool gAutoTriggerReady = false;
 std::chrono::steady_clock::time_point gNextResolveAttempt {};
-
-const char* sourceDataRefPath(const std::string& source)
-{
-    if (source == "stall_warning_ratio") {
-        return "sim/cockpit2/annunciators/stall_warning_ratio";
-    }
-    if (source == "zibo_stall_1g") {
-        return "laminar/B738/system/stall_1g";
-    }
-    return "sim/cockpit2/annunciators/stall_warning";
-}
-
-bool sourceReadsAsFloat(const std::string& source)
-{
-    return source == "stall_warning_ratio" || source == "zibo_stall_1g";
-}
 
 std::string trim(std::string value)
 {
@@ -101,10 +89,9 @@ std::string readTailnum()
     return trim(tail);
 }
 
-bool isConfiguredTailnum(const Config& config, const std::string& tailnum)
+bool isZiboTailnum(const std::string& tailnum)
 {
-    return std::find(config.aircraft.tailnums.begin(), config.aircraft.tailnums.end(), tailnum) !=
-        config.aircraft.tailnums.end();
+    return std::find(kZiboTailnums.begin(), kZiboTailnums.end(), tailnum) != kZiboTailnums.end();
 }
 
 bool isZiboPluginLoaded()
@@ -114,14 +101,13 @@ bool isZiboPluginLoaded()
 
 bool resolveRuntimeDependencies(bool logMissing)
 {
-    const Config& config = gController.config();
     gTailnumDataRef = XPLMFindDataRef("sim/aircraft/view/acf_tailnum");
-    gTriggerDataRef = XPLMFindDataRef(sourceDataRefPath(config.source));
+    gTriggerDataRef = XPLMFindDataRef(kTriggerDataRefPath);
 
     const std::string tailnum = readTailnum();
     const bool tailRefReady = gTailnumDataRef != nullptr;
-    const bool tailMatches = !tailnum.empty() && isConfiguredTailnum(config, tailnum);
-    const bool ziboReady = !config.aircraft.requireZiboPlugin || isZiboPluginLoaded();
+    const bool tailMatches = !tailnum.empty() && isZiboTailnum(tailnum);
+    const bool ziboReady = isZiboPluginLoaded();
     const bool triggerReady = gTriggerDataRef != nullptr;
 
     gAutoTriggerReady = tailRefReady && tailMatches && ziboReady && triggerReady;
@@ -134,7 +120,7 @@ bool resolveRuntimeDependencies(bool logMissing)
             ", trigger_dataref=" + std::string(triggerReady ? "1" : "0"));
     }
     if (gAutoTriggerReady && logMissing) {
-        xplaneLog("auto trigger ready: tail=" + tailnum + ", source=" + config.source);
+        xplaneLog("auto trigger ready: tail=" + tailnum + ", source=" + kTriggerDataRefPath);
     }
     return gAutoTriggerReady;
 }
@@ -164,10 +150,6 @@ bool readTrigger()
         return false;
     }
 
-    const auto source = gController.config().source;
-    if (sourceReadsAsFloat(source)) {
-        return XPLMGetDataf(gTriggerDataRef) > 0.5f;
-    }
     return XPLMGetDatai(gTriggerDataRef) != 0;
 }
 
@@ -177,14 +159,13 @@ float flightLoopCallback(float, float, int, void*)
         const auto now = std::chrono::steady_clock::now();
         if (now >= gNextResolveAttempt) {
             const bool ready = resolveRuntimeDependencies(true);
-            const int retrySec = std::max(1, gController.config().aircraft.retryIntervalSec);
-            gNextResolveAttempt = now + std::chrono::seconds(retrySec);
-            if (!ready && gController.config().enabled && gController.config().aircraft.deferUntilDatarefs) {
+            gNextResolveAttempt = now + std::chrono::seconds(kDependencyRetryIntervalSec);
+            if (!ready && gController.config().enabled && kDeferUntilDatarefs) {
                 gController.forceOff();
                 return 0.5f;
             }
         }
-        if (gController.config().aircraft.deferUntilDatarefs) {
+        if (kDeferUntilDatarefs) {
             return 0.5f;
         }
     }

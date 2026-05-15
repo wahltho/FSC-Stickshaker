@@ -21,10 +21,7 @@ int main()
 
     auto config = loadConfig(path);
     assert(config.enabled == false);
-    assert(config.transport == TransportKind::LogOnly);
-    assert((config.aircraft.tailnums == std::vector<std::string> {"ZB738", "B738"}));
-    assert(config.aircraft.requireZiboPlugin == true);
-    assert(config.aircraft.deferUntilDatarefs == true);
+    assert(config.transport == TransportKind::Serial);
     assert(config.serial.baud == 115200);
 
     config.enabled = true;

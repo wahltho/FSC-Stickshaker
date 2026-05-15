@@ -1,77 +1,79 @@
 # FSC Stickshaker
 
-Standalone X-Plane plugin project for driving FSC Stick Shaker hardware.
+Standalone X-Plane plugin for FSC Stick Shaker hardware.
 
-This project is intentionally separate from `FSCB738TQ-Nextgen` and from the CPFlight plugin. The current goal is to build a small, self-contained plugin that listens to a stall-warning trigger in X-Plane/Zibo and sends simple ON/OFF commands to the stick shaker device.
+The plugin is intended for the Zibo 737 and drives the stick shaker from X-Plane's stall warning state. It is independent from the FSC throttle quadrant plugin and does not require CPFlight integration.
 
-## Current Status
+## Features
 
-- Initial C++ plugin skeleton exists.
-- No real hardware is currently available for validation.
-- Serial and TCP protocol handling is still stubbed/log-only in the current skeleton.
+- Drives FSC Stick Shaker hardware from X-Plane/Zibo stall warning.
+- Supports serial COM and TCP/IP transport.
+- Uses a simple ON/OFF output model.
+- Gates automatic operation to Zibo aircraft tail numbers:
+  - `ZB738`
+  - `B738`
+- Retries X-Plane/Zibo DataRef lookup after plugin startup so load order does not block operation.
+- Provides manual test commands for setup and diagnostics.
 
-## Implementation Constraints
+## Requirements
 
-- Implementation language: C++.
-- Target platforms: macOS, Windows, and Linux X-Plane plugin builds.
-- Runtime configuration should use an X-Plane `.prf` file.
-- Local build directories should live under:
-  - `/Users/wahltho/dev/FSC Stickhaker`
+- X-Plane 12.
+- Zibo 737.
+- FSC Stick Shaker hardware connected by serial COM or TCP/IP.
 
-## Confirmed Findings
+## Install
 
-- The original Windows driver supports two transports:
-  - serial COM
-  - TCP/IP
-- Serial transport sends 3 raw bytes:
-  - `FF 01 00` = likely OFF
-  - `FF 01 01` = likely ON
-- TCP transport sends the same logical message as 6 ASCII hex characters:
-  - `FF0100` or `FF0101`
-  - followed by a second frame with the middle byte incremented:
-  - `FF0200` or `FF0201`
-- No protocol readback, ACK/NACK, or checksum handling has been identified from static analysis.
-- For Zibo, the best current runtime trigger candidate is:
-  - `sim/cockpit2/annunciators/stall_warning`
+Copy the plugin folder to:
 
-## Architecture Decision
+```text
+<X-Plane>/Resources/plugins/FSCStickShaker
+```
 
-This should remain a dedicated stick-shaker project, not an extension of the FSC throttle quadrant plugin.
+The platform binary must be located in:
 
-Reasons:
+```text
+<X-Plane>/Resources/plugins/FSCStickShaker/64/<mac|lin|win>.xpl
+```
 
-- different hardware
-- different transport model
-- some users may have only the stick shaker and no throttle quadrant
-- the throttle quadrant repo currently has one global FSC enable/lifecycle path, which would become awkward if reused for unrelated shaker-only users
+## Preferences
 
-## Recommended First Implementation Slice
+Preferences are stored in:
 
-1. Define plugin identity and `.prf` prefs format.
-2. Implement a small transport abstraction:
-   - serial
-   - TCP
-3. Implement a simple shaker state machine:
-   - trigger false -> OFF
-   - trigger true -> ON
-4. Add manual test commands:
-   - force ON
-   - force OFF
-   - reload prefs
-5. Validate against real hardware.
+```text
+<X-Plane>/Output/preferences/FSCStickShaker.prf
+```
 
-## Aircraft Gating
+Default preferences:
 
-Automatic shaker output is gated to configured aircraft tail numbers before the stall-warning trigger is used. Defaults are Zibo-oriented:
+```ini
+shaker.enabled=0
+shaker.transport=serial
+shaker.serial.port=
+shaker.serial.baud=115200
+shaker.serial.data_bits=8
+shaker.serial.parity=none
+shaker.serial.stop_bits=1
+shaker.tcp.ip=192.168.0.10
+shaker.tcp.port=12345
+shaker.debug=0
+```
 
-- `ZB738`
-- `B738`
+`shaker.transport` accepts:
 
-The plugin also retries missing X-Plane/Zibo DataRefs from the flight loop so plugin load order does not permanently disable the trigger path.
+- `serial`
+- `tcp`
+- `log`
+
+## Commands
+
+- `FSCStickShaker/reload_prefs`
+- `FSCStickShaker/test_on`
+- `FSCStickShaker/test_off`
+- `FSCStickShaker/test_pulse`
 
 ## Build
 
-The build follows the same CMake toolchain style as `FSCB738TQ-Nextgen`.
+The project uses CMake and the X-Plane SDK.
 
 ```sh
 cmake -S . -B "/Users/wahltho/dev/FSC Stickhaker/build-mac-universal" -DCMAKE_BUILD_TYPE=Release -DXPLANE_SDK_ROOT="../SDKs/XPlane_SDK" -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"

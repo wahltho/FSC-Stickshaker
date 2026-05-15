@@ -2,7 +2,6 @@
 
 #include <filesystem>
 #include <string>
-#include <vector>
 
 namespace fsc::stickshaker {
 
@@ -18,9 +17,6 @@ struct SerialConfig {
     int dataBits = 8;
     std::string parity = "none";
     int stopBits = 1;
-    bool dtr = true;
-    bool rts = true;
-    bool xonxoff = false;
 };
 
 struct TcpConfig {
@@ -28,19 +24,10 @@ struct TcpConfig {
     int port = 12345;
 };
 
-struct AircraftConfig {
-    std::vector<std::string> tailnums = {"ZB738", "B738"};
-    bool requireZiboPlugin = true;
-    bool deferUntilDatarefs = true;
-    int retryIntervalSec = 5;
-};
-
 struct Config {
     bool enabled = false;
     bool debug = false;
-    TransportKind transport = TransportKind::LogOnly;
-    std::string source = "stall_warning";
-    AircraftConfig aircraft;
+    TransportKind transport = TransportKind::Serial;
     SerialConfig serial;
     TcpConfig tcp;
 };

@@ -4,7 +4,6 @@
 #include <cctype>
 #include <fstream>
 #include <map>
-#include <sstream>
 #include <stdexcept>
 
 namespace fsc::stickshaker {
@@ -47,36 +46,6 @@ int parseInt(const std::string& value, int fallback)
     } catch (const std::exception&) {
         return fallback;
     }
-}
-
-std::vector<std::string> parseList(const std::string& value, std::vector<std::string> fallback)
-{
-    if (trim(value).empty()) {
-        return fallback;
-    }
-
-    std::vector<std::string> result;
-    std::stringstream input(value);
-    std::string item;
-    while (std::getline(input, item, ',')) {
-        item = trim(item);
-        if (!item.empty()) {
-            result.push_back(std::move(item));
-        }
-    }
-    return result.empty() ? std::move(fallback) : result;
-}
-
-std::string joinList(const std::vector<std::string>& values)
-{
-    std::string out;
-    for (std::size_t i = 0; i < values.size(); ++i) {
-        if (i != 0) {
-            out += ',';
-        }
-        out += values[i];
-    }
-    return out;
 }
 
 std::map<std::string, std::string> readKeyValues(const std::filesystem::path& path)
@@ -152,23 +121,12 @@ Config loadConfig(const std::filesystem::path& path)
     config.enabled = parseBool(getString(values, "shaker.enabled", "0"), config.enabled);
     config.debug = parseBool(getString(values, "shaker.debug", "0"), config.debug);
     config.transport = transportKindFromString(getString(values, "shaker.transport", toString(config.transport)));
-    config.source = getString(values, "shaker.source", config.source);
-    config.aircraft.tailnums = parseList(getString(values, "shaker.aircraft.tailnums", ""), config.aircraft.tailnums);
-    config.aircraft.requireZiboPlugin =
-        parseBool(getString(values, "shaker.aircraft.require_zibo_plugin", ""), config.aircraft.requireZiboPlugin);
-    config.aircraft.deferUntilDatarefs =
-        parseBool(getString(values, "shaker.defer_until_datarefs", ""), config.aircraft.deferUntilDatarefs);
-    config.aircraft.retryIntervalSec =
-        parseInt(getString(values, "shaker.retry_interval_sec", ""), config.aircraft.retryIntervalSec);
 
     config.serial.port = getString(values, "shaker.serial.port", config.serial.port);
     config.serial.baud = parseInt(getString(values, "shaker.serial.baud", ""), config.serial.baud);
     config.serial.dataBits = parseInt(getString(values, "shaker.serial.data_bits", ""), config.serial.dataBits);
     config.serial.parity = getString(values, "shaker.serial.parity", config.serial.parity);
     config.serial.stopBits = parseInt(getString(values, "shaker.serial.stop_bits", ""), config.serial.stopBits);
-    config.serial.dtr = parseBool(getString(values, "shaker.serial.dtr", ""), config.serial.dtr);
-    config.serial.rts = parseBool(getString(values, "shaker.serial.rts", ""), config.serial.rts);
-    config.serial.xonxoff = parseBool(getString(values, "shaker.serial.xonxoff", ""), config.serial.xonxoff);
 
     config.tcp.ip = getString(values, "shaker.tcp.ip", config.tcp.ip);
     config.tcp.port = parseInt(getString(values, "shaker.tcp.port", ""), config.tcp.port);
@@ -185,19 +143,11 @@ void saveDefaultConfig(const std::filesystem::path& path, const Config& config)
            << "# Transport is one of: log, serial, tcp\n"
            << "shaker.enabled=" << (config.enabled ? 1 : 0) << '\n'
            << "shaker.transport=" << toString(config.transport) << '\n'
-           << "shaker.source=" << config.source << '\n'
-           << "shaker.aircraft.tailnums=" << joinList(config.aircraft.tailnums) << '\n'
-           << "shaker.aircraft.require_zibo_plugin=" << (config.aircraft.requireZiboPlugin ? 1 : 0) << '\n'
-           << "shaker.defer_until_datarefs=" << (config.aircraft.deferUntilDatarefs ? 1 : 0) << '\n'
-           << "shaker.retry_interval_sec=" << config.aircraft.retryIntervalSec << '\n'
            << "shaker.serial.port=" << config.serial.port << '\n'
            << "shaker.serial.baud=" << config.serial.baud << '\n'
            << "shaker.serial.data_bits=" << config.serial.dataBits << '\n'
            << "shaker.serial.parity=" << config.serial.parity << '\n'
            << "shaker.serial.stop_bits=" << config.serial.stopBits << '\n'
-           << "shaker.serial.dtr=" << (config.serial.dtr ? 1 : 0) << '\n'
-           << "shaker.serial.rts=" << (config.serial.rts ? 1 : 0) << '\n'
-           << "shaker.serial.xonxoff=" << (config.serial.xonxoff ? 1 : 0) << '\n'
            << "shaker.tcp.ip=" << config.tcp.ip << '\n'
            << "shaker.tcp.port=" << config.tcp.port << '\n'
            << "shaker.debug=" << (config.debug ? 1 : 0) << '\n';
