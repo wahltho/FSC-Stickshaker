@@ -1,40 +1,36 @@
 # Prerequisites
 *.d
 
-# Compiled Object files
+# Compiled object files
 *.slo
 *.lo
 *.o
 *.obj
 
-# Precompiled Headers
+# Precompiled headers
 *.gch
 *.pch
 
 # Linker files
 *.ilk
 
-# Debugger Files
+# Debugger files
 *.pdb
 
-# Compiled Dynamic libraries
+# Compiled dynamic libraries and X-Plane plugin binaries
 *.so
+*.so.*
 *.dylib
 *.dll
-*.so.*
+*.xpl
 
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
+# Compiled static libraries
 *.lai
 *.la
 *.a
 *.lib
 
-# Executables
+# Executables and app bundles
 *.exe
 *.out
 *.app
@@ -43,6 +39,7 @@
 build/
 Build/
 build-*/
+cmake-build-*/
 
 # CMake generated files
 CMakeFiles/
@@ -53,6 +50,7 @@ install_manifest.txt
 compile_commands.json
 
 # Temporary files
+.DS_Store
 *.tmp
 *.log
 *.bak
@@ -61,9 +59,20 @@ compile_commands.json
 # vcpkg
 vcpkg_installed/
 
-# debug information files
+# Debug information files
 *.dwo
 
-# test output & cache
+# Test output and cache
 Testing/
 .cache/
+
+# Local documentation, deployment and agent / ChatGPT / Codex handoff files
+Documentation/
+deploy/
+AGENTS.md
+Agents.md
+agents.md
+CLAUDE.md
+GEMINI.md
+.agents/
+.codex/
