@@ -93,3 +93,7 @@ cmake -S . -B "/Users/wahltho/dev/FSC Stickhaker/build-mac-universal" -DCMAKE_BU
 cmake --build "/Users/wahltho/dev/FSC Stickhaker/build-mac-universal" --config Release
 ctest --test-dir "/Users/wahltho/dev/FSC Stickhaker/build-mac-universal" --output-on-failure
 ```
+
+## License
+
+MIT License. See [LICENSE](LICENSE).
