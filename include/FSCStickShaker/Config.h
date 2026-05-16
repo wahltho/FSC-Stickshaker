@@ -30,7 +30,7 @@ struct UdpConfig {
     std::string ip = "192.168.1.199";
     int sourcePort = 12345;
     int destinationPort = 12345;
-    std::vector<int> relayChannels {5};
+    std::vector<int> relayChannels {1, 2};
 };
 
 struct Config {

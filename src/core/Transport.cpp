@@ -183,7 +183,7 @@ public:
     bool send(bool active) override
     {
         if (selectedTransport_ == TransportKind::Udp || selectedTransport_ == TransportKind::Tcp) {
-            const auto frames = asciiRelayFrames(active, {5});
+            const auto frames = asciiRelayFrames(active, {1, 2});
             logInfo(toString(selectedTransport_) + " send log: " + (frames.empty() ? "<none>" : frames[0]));
         } else {
             logInfo("serial send log: " + bytesToHex(serialFrame(active)));

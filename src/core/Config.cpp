@@ -166,7 +166,7 @@ Config loadConfig(const std::filesystem::path& path)
         getString(values, "shaker.udp.destination_port", getString(values, "shaker.tcp.port", "")),
         config.udp.destinationPort);
     config.udp.relayChannels = parseRelayChannels(
-        getString(values, "shaker.udp.relay_channels", getString(values, "PortNumber", "")),
+        getString(values, "shaker.udp.relay_channels", ""),
         config.udp.relayChannels);
 
     config.tcp.ip = getString(values, "shaker.tcp.ip", config.tcp.ip);

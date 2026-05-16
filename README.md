@@ -2,7 +2,7 @@
 
 Standalone X-Plane plugin for FSC Stick Shaker hardware.
 
-Version: `0.2`
+Version: `0.7`
 
 Plugin signature: `com.fscstickshaker`
 
@@ -11,7 +11,7 @@ The plugin is intended for the Zibo 737 and drives the stick shaker from X-Plane
 ## Features
 
 - Drives FSC Stick Shaker hardware from X-Plane/Zibo stall warning.
-- Supports serial COM and TCP/IP transport.
+- Supports UDP/IP and serial COM transport.
 - Uses a simple ON/OFF output model.
 - Gates automatic operation to Zibo aircraft tail numbers:
   - `ZB738`
@@ -23,7 +23,7 @@ The plugin is intended for the Zibo 737 and drives the stick shaker from X-Plane
 
 - X-Plane 12.
 - Zibo 737.
-- FSC Stick Shaker hardware connected by serial COM or TCP/IP.
+- FSC Stick Shaker hardware connected by UDP/IP or serial COM.
 
 ## Install
 
@@ -51,21 +51,23 @@ Default preferences:
 
 ```ini
 shaker.enabled=1
-shaker.transport=tcp
+shaker.transport=udp
 shaker.serial.port=
 shaker.serial.baud=115200
 shaker.serial.data_bits=8
 shaker.serial.parity=none
 shaker.serial.stop_bits=1
-shaker.tcp.ip=192.168.1.199
-shaker.tcp.port=12345
+shaker.udp.ip=192.168.1.199
+shaker.udp.source_port=12345
+shaker.udp.destination_port=12345
+shaker.udp.relay_channels=1,2
 shaker.debug=0
 ```
 
 `shaker.transport` accepts:
 
 - `serial`
-- `tcp`
+- `udp`
 - `log`
 
 ## Commands
@@ -74,6 +76,12 @@ shaker.debug=0
 - `FSCStickShaker/test_on`
 - `FSCStickShaker/test_off`
 - `FSCStickShaker/test_pulse`
+
+The same actions are available from the X-Plane menu:
+
+```text
+Plugins -> FSC Stick Shaker
+```
 
 ## Build
 

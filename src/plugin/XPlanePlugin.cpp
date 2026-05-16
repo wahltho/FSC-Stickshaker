@@ -41,6 +41,10 @@ constexpr std::array<const char*, 4> kTriggerDataRefPaths {
 constexpr int kDependencyRetryIntervalSec = 5;
 constexpr bool kDeferUntilDatarefs = true;
 constexpr auto kManualPulseDuration = std::chrono::seconds(2);
+constexpr std::intptr_t kMenuTestOn = 1;
+constexpr std::intptr_t kMenuTestOff = 2;
+constexpr std::intptr_t kMenuTestPulse = 3;
+constexpr std::intptr_t kMenuReloadPrefs = 4;
 constexpr std::array<const char*, 2> kZiboTailnums {"ZB738", "B738"};
 
 ShakerController gController;
@@ -282,16 +286,16 @@ void menuHandler(void*, void* itemRef)
 {
     const auto item = reinterpret_cast<std::intptr_t>(itemRef);
     switch (item) {
-    case 1:
+    case kMenuTestOn:
         runTestOn();
         break;
-    case 2:
+    case kMenuTestOff:
         runTestOff();
         break;
-    case 3:
+    case kMenuTestPulse:
         runTestPulse();
         break;
-    case 4:
+    case kMenuReloadPrefs:
         runReloadPrefs();
         break;
     default:
@@ -338,11 +342,11 @@ void createMenu()
     const XPLMMenuID pluginsMenu = XPLMFindPluginsMenu();
     gMenuContainerIndex = XPLMAppendMenuItem(pluginsMenu, "FSC Stick Shaker", nullptr, 1);
     gMenu = XPLMCreateMenu("FSC Stick Shaker", pluginsMenu, gMenuContainerIndex, menuHandler, nullptr);
-    XPLMAppendMenuItem(gMenu, "Test On", reinterpret_cast<void*>(1), 1);
-    XPLMAppendMenuItem(gMenu, "Test Off", reinterpret_cast<void*>(2), 1);
-    XPLMAppendMenuItem(gMenu, "Test Pulse", reinterpret_cast<void*>(3), 1);
+    XPLMAppendMenuItem(gMenu, "Test On", reinterpret_cast<void*>(kMenuTestOn), 1);
+    XPLMAppendMenuItem(gMenu, "Test Off", reinterpret_cast<void*>(kMenuTestOff), 1);
+    XPLMAppendMenuItem(gMenu, "Test Pulse", reinterpret_cast<void*>(kMenuTestPulse), 1);
     XPLMAppendMenuSeparator(gMenu);
-    XPLMAppendMenuItem(gMenu, "Reload Preferences", reinterpret_cast<void*>(4), 1);
+    XPLMAppendMenuItem(gMenu, "Reload Preferences", reinterpret_cast<void*>(kMenuReloadPrefs), 1);
 }
 
 void destroyMenu()
