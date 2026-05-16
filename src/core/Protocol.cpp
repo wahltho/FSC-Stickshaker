@@ -10,38 +10,56 @@ std::vector<std::uint8_t> serialFrame(bool active)
     return {0xFF, 0x01, static_cast<std::uint8_t>(active ? 0x01 : 0x00)};
 }
 
-std::vector<std::string> asciiRelayFrames(bool active, const std::vector<int>& channels)
+std::vector<std::string> asciiRelayFrames(ShakerState state, const std::vector<int>& channels)
 {
-    const char state = active ? '1' : '0';
     std::vector<std::string> frames;
     frames.reserve(channels.size());
-    for (const int channel : channels) {
+    for (std::size_t index = 0; index < channels.size(); ++index) {
+        const int channel = channels[index];
         if (channel < 1 || channel > 99) {
             continue;
         }
+
+        bool active = state.any();
+        if (index == 0) {
+            active = state.captain;
+        } else if (index == 1) {
+            active = state.firstOfficer;
+        }
+
         std::ostringstream frame;
-        frame << "FF" << std::setw(2) << std::setfill('0') << channel << '0' << state;
+        frame << "FF" << std::setw(2) << std::setfill('0') << channel << '0' << (active ? '1' : '0');
         frames.push_back(frame.str());
     }
     return frames;
 }
 
+std::vector<std::string> asciiRelayFrames(bool active, const std::vector<int>& channels)
+{
+    return asciiRelayFrames({active, active}, channels);
+}
+
+std::vector<std::vector<std::uint8_t>> relayFrames(ShakerState state)
+{
+    return {
+        {0xFF, 0x01, static_cast<std::uint8_t>(state.captain ? 0x01 : 0x00)},
+        {0xFF, 0x02, static_cast<std::uint8_t>(state.firstOfficer ? 0x01 : 0x00)},
+    };
+}
+
 std::vector<std::vector<std::uint8_t>> relayFrames(bool active)
 {
-    const auto state = static_cast<std::uint8_t>(active ? 0x01 : 0x00);
-    return {
-        {0xFF, 0x01, state},
-        {0xFF, 0x02, state},
-    };
+    return relayFrames({active, active});
+}
+
+std::vector<std::string> tcpFrames(ShakerState state)
+{
+    return asciiRelayFrames(state, {1, 2});
 }
 
 std::vector<std::string> tcpFrames(bool active)
 {
-    const char state = active ? '1' : '0';
-    return {
-        std::string("FF010") + state,
-        std::string("FF020") + state,
-    };
+    return tcpFrames({active, active});
 }
 
 std::string bytesToHex(const std::vector<std::uint8_t>& bytes)

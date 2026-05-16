@@ -15,10 +15,16 @@ int main()
     assert((serialFrame(true) == std::vector<unsigned char> {0xFF, 0x01, 0x01}));
     assert((asciiRelayFrames(false, {1, 2}) == std::vector<std::string> {"FF0100", "FF0200"}));
     assert((asciiRelayFrames(true, {1, 2}) == std::vector<std::string> {"FF0101", "FF0201"}));
+    assert((asciiRelayFrames(ShakerState {true, false}, {1, 2}) == std::vector<std::string> {"FF0101", "FF0200"}));
+    assert((asciiRelayFrames(ShakerState {false, true}, {1, 2}) == std::vector<std::string> {"FF0100", "FF0201"}));
     assert((relayFrames(false) == std::vector<std::vector<unsigned char>> {{0xFF, 0x01, 0x00}, {0xFF, 0x02, 0x00}}));
     assert((relayFrames(true) == std::vector<std::vector<unsigned char>> {{0xFF, 0x01, 0x01}, {0xFF, 0x02, 0x01}}));
+    assert((relayFrames(ShakerState {true, false}) == std::vector<std::vector<unsigned char>> {{0xFF, 0x01, 0x01}, {0xFF, 0x02, 0x00}}));
+    assert((relayFrames(ShakerState {false, true}) == std::vector<std::vector<unsigned char>> {{0xFF, 0x01, 0x00}, {0xFF, 0x02, 0x01}}));
     assert((tcpFrames(false) == std::vector<std::string> {"FF0100", "FF0200"}));
     assert((tcpFrames(true) == std::vector<std::string> {"FF0101", "FF0201"}));
+    assert((tcpFrames(ShakerState {true, false}) == std::vector<std::string> {"FF0101", "FF0200"}));
+    assert((tcpFrames(ShakerState {false, true}) == std::vector<std::string> {"FF0100", "FF0201"}));
 
     const auto path = std::filesystem::temp_directory_path() / "FSCStickShaker-smoke.prf";
     saveDefaultConfig(path);
@@ -35,9 +41,9 @@ int main()
     config.transport = TransportKind::LogOnly;
     ShakerController controller;
     controller.configure(config);
-    controller.updateTrigger(false);
-    controller.updateTrigger(true);
-    controller.updateTrigger(true);
+    controller.updateTrigger({});
+    controller.updateTrigger({true, false});
+    controller.updateTrigger({true, false});
     controller.forceOff();
     controller.shutdown();
 

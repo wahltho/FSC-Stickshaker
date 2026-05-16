@@ -36,8 +36,8 @@ void ShakerController::configure(Config config)
 void ShakerController::shutdown()
 {
     if (transport_) {
-        if (lastSentState_.value_or(false)) {
-            transport_->send(false);
+        if (lastSentState_.value_or(ShakerState {}).any()) {
+            transport_->send({});
         }
         transport_->close();
         transport_.reset();
@@ -45,22 +45,22 @@ void ShakerController::shutdown()
     lastSentState_.reset();
 }
 
-void ShakerController::updateTrigger(bool active)
+void ShakerController::updateTrigger(ShakerState state)
 {
     if (!config_.enabled) {
         return;
     }
-    sendState(active, false);
+    sendState(state, false);
 }
 
 void ShakerController::forceOn()
 {
-    sendState(true, true);
+    sendState({true, true}, true);
 }
 
 void ShakerController::forceOff()
 {
-    sendState(false, true);
+    sendState({}, true);
 }
 
 void ShakerController::pulse()
@@ -74,7 +74,7 @@ const Config& ShakerController::config() const
     return config_;
 }
 
-bool ShakerController::sendState(bool active, bool force)
+bool ShakerController::sendState(ShakerState state, bool force)
 {
     if (!transport_) {
         const auto now = std::chrono::steady_clock::now();
@@ -91,14 +91,14 @@ bool ShakerController::sendState(bool active, bool force)
         nextTransportOpenAttempt_ = {};
     }
 
-    if (!force && lastSentState_.has_value() && *lastSentState_ == active) {
-        logDebug(config_.debug, active ? "suppress duplicate ON" : "suppress duplicate OFF");
+    if (!force && lastSentState_.has_value() && *lastSentState_ == state) {
+        logDebug(config_.debug, state.any() ? "suppress duplicate ON" : "suppress duplicate OFF");
         return true;
     }
 
-    const bool sent = transport_->send(active);
+    const bool sent = transport_->send(state);
     if (sent) {
-        lastSentState_ = active;
+        lastSentState_ = state;
     } else {
         transport_->close();
         transport_.reset();

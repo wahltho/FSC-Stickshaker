@@ -2,7 +2,7 @@
 
 Standalone X-Plane plugin for FSC Stick Shaker hardware.
 
-Version: `0.8`
+Version: `0.9`
 
 Plugin signature: `com.fscstickshaker`
 
@@ -11,6 +11,7 @@ The plugin is intended for the Zibo 737 and drives the stick shaker from Zibo's 
 ## Features
 
 - Drives FSC Stick Shaker hardware from Zibo's `laminar/autopilot/yoke_shake_cpt` and `laminar/autopilot/yoke_shake_fo` outputs.
+- Maps the captain shaker to the first configured relay channel and the first officer shaker to the second configured relay channel.
 - Suppresses automatic stall activation while Zibo reports ground state through `laminar/B738/air_ground_sensor`, but still follows the Zibo stall test active states on the ground.
 - Supports UDP/IP and serial COM transport.
 - Uses a simple ON/OFF output model.

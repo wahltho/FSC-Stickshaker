@@ -1,6 +1,7 @@
 #pragma once
 
 #include "FSCStickShaker/Config.h"
+#include "FSCStickShaker/Protocol.h"
 
 #include <memory>
 #include <string>
@@ -13,7 +14,7 @@ public:
 
     virtual bool open(const Config& config) = 0;
     virtual void close() = 0;
-    virtual bool send(bool active) = 0;
+    virtual bool send(ShakerState state) = 0;
     virtual std::string name() const = 0;
 };
 

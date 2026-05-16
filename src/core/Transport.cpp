@@ -6,6 +6,7 @@
 #include <cerrno>
 #include <cstring>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -166,6 +167,19 @@ void setSocketSendTimeout(socket_t socket, int timeoutMs)
 #endif
 }
 
+std::string joinFrames(const std::vector<std::string>& frames)
+{
+    std::ostringstream output;
+    for (std::size_t i = 0; i < frames.size(); ++i) {
+        if (i != 0) {
+            output << ',';
+        }
+        output << frames[i];
+    }
+    const std::string text = output.str();
+    return text.empty() ? "<none>" : text;
+}
+
 class LoggingTransport final : public ITransport {
 public:
     bool open(const Config& config) override
@@ -180,13 +194,13 @@ public:
         logInfo("transport close: " + name());
     }
 
-    bool send(bool active) override
+    bool send(ShakerState state) override
     {
         if (selectedTransport_ == TransportKind::Udp || selectedTransport_ == TransportKind::Tcp) {
-            const auto frames = asciiRelayFrames(active, {1, 2});
-            logInfo(toString(selectedTransport_) + " send log: " + (frames.empty() ? "<none>" : frames[0]));
+            const auto frames = asciiRelayFrames(state, {1, 2});
+            logInfo(toString(selectedTransport_) + " send log: " + joinFrames(frames));
         } else {
-            logInfo("serial send log: " + bytesToHex(serialFrame(active)));
+            logInfo("serial send log: " + bytesToHex(serialFrame(state.any())));
         }
         return true;
     }
@@ -328,9 +342,9 @@ public:
 #endif
     }
 
-    bool send(bool active) override
+    bool send(ShakerState state) override
     {
-        const auto frame = serialFrame(active);
+        const auto frame = serialFrame(state.any());
         const bool ok = writeAll(frame.data(), frame.size());
         if (!ok) {
             logInfo("serial write failed");
@@ -505,9 +519,9 @@ public:
         targetLength_ = 0;
     }
 
-    bool send(bool active) override
+    bool send(ShakerState state) override
     {
-        const auto frames = asciiRelayFrames(active, config_.relayChannels);
+        const auto frames = asciiRelayFrames(state, config_.relayChannels);
         for (const auto& frame : frames) {
             const int sent = ::sendto(socket_,
                 frame.data(),
@@ -520,7 +534,11 @@ public:
                 return false;
             }
         }
-        logInfo(std::string("UDP sent ") + (active ? "ON" : "OFF") + ": " + (frames.empty() ? "<none>" : frames.front()));
+        logInfo(std::string("UDP sent ")
+            + (state.any() ? "ON" : "OFF")
+            + " cpt=" + (state.captain ? "1" : "0")
+            + " fo=" + (state.firstOfficer ? "1" : "0")
+            + ": " + joinFrames(frames));
         return true;
     }
 
@@ -645,9 +663,9 @@ public:
         closeSocket(socket_);
     }
 
-    bool send(bool active) override
+    bool send(ShakerState state) override
     {
-        const auto frames = tcpFrames(active);
+        const auto frames = tcpFrames(state);
         for (const auto& frame : frames) {
             if (!sendAll(frame.data(), frame.size())) {
                 logInfo("TCP send failed");

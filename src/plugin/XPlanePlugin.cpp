@@ -24,6 +24,7 @@
 namespace {
 
 using fsc::stickshaker::Config;
+using fsc::stickshaker::ShakerState;
 using fsc::stickshaker::ShakerController;
 
 constexpr const char* kPluginVersion = PLUGIN_VERSION;
@@ -281,18 +282,20 @@ void reloadPrefs()
     xplaneLog("loaded prefs: " + gPrefsPath.string());
 }
 
-bool readTrigger()
+ShakerState readTrigger()
 {
     if (!isAirborne() && !isStallTestActive()) {
-        return false;
+        return {};
     }
 
-    for (const auto& trigger : gTriggerDataRefs) {
-        if (readTriggerValue(trigger) > 0.5f) {
-            return true;
-        }
+    ShakerState state;
+    if (gTriggerDataRefs.size() > 0) {
+        state.captain = readTriggerValue(gTriggerDataRefs[0]) > 0.5f;
     }
-    return false;
+    if (gTriggerDataRefs.size() > 1) {
+        state.firstOfficer = readTriggerValue(gTriggerDataRefs[1]) > 0.5f;
+    }
+    return state;
 }
 
 void runReloadPrefs()
@@ -338,7 +341,7 @@ float flightLoopCallback(float, float, int, void*)
             const bool ready = resolveRuntimeDependencies(true);
             gNextResolveAttempt = now + std::chrono::seconds(kDependencyRetryIntervalSec);
             if (!ready && gController.config().enabled && kDeferUntilDatarefs) {
-                gController.updateTrigger(false);
+                gController.updateTrigger({});
                 return 0.5f;
             }
         }
@@ -347,12 +350,17 @@ float flightLoopCallback(float, float, int, void*)
         }
     }
 
-    const bool triggerActive = readTrigger();
+    const ShakerState triggerState = readTrigger();
+    const bool triggerActive = triggerState.any();
     if (triggerActive != gLastAutoTriggerActive) {
-        xplaneLog(std::string("auto trigger ") + (triggerActive ? "ON: " : "OFF: ") + triggerValueSummary());
+        xplaneLog(std::string("auto trigger ")
+            + (triggerActive ? "ON" : "OFF")
+            + " cpt=" + (triggerState.captain ? "1" : "0")
+            + " fo=" + (triggerState.firstOfficer ? "1" : "0")
+            + ": " + triggerValueSummary());
         gLastAutoTriggerActive = triggerActive;
     }
-    gController.updateTrigger(triggerActive);
+    gController.updateTrigger(triggerState);
     return 0.1f;
 }
 
