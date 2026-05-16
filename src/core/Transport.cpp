@@ -33,9 +33,11 @@ namespace {
 
 #if defined(_WIN32)
 using socket_t = SOCKET;
+using socklen_compat_t = int;
 constexpr socket_t kInvalidSocket = INVALID_SOCKET;
 #else
 using socket_t = int;
+using socklen_compat_t = socklen_t;
 constexpr socket_t kInvalidSocket = -1;
 #endif
 
@@ -180,9 +182,9 @@ public:
 
     bool send(bool active) override
     {
-        if (selectedTransport_ == TransportKind::Tcp) {
-            const auto frames = tcpFrames(active);
-            logInfo(std::string("TCP send log: ") + frames[0] + " then " + frames[1]);
+        if (selectedTransport_ == TransportKind::Udp || selectedTransport_ == TransportKind::Tcp) {
+            const auto frames = asciiRelayFrames(active, {5});
+            logInfo(toString(selectedTransport_) + " send log: " + (frames.empty() ? "<none>" : frames[0]));
         } else {
             logInfo("serial send log: " + bytesToHex(serialFrame(active)));
         }
@@ -433,6 +435,142 @@ private:
 #endif
 };
 
+class UdpTransport final : public ITransport {
+public:
+    ~UdpTransport() override
+    {
+        close();
+    }
+
+    bool open(const Config& config) override
+    {
+        close();
+        config_ = config.udp;
+        if (config_.ip.empty() || config_.destinationPort <= 0) {
+            logInfo("UDP target is not configured");
+            return false;
+        }
+
+#if defined(_WIN32)
+        if (!wsaStarted_) {
+            WSADATA data {};
+            if (WSAStartup(MAKEWORD(2, 2), &data) != 0) {
+                logInfo("WSAStartup failed");
+                return false;
+            }
+            wsaStarted_ = true;
+        }
+#endif
+
+        addrinfo hints {};
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_socktype = SOCK_DGRAM;
+        hints.ai_flags = AI_NUMERICHOST;
+
+        addrinfo* result = nullptr;
+        const std::string destinationPort = std::to_string(config_.destinationPort);
+        const int gai = getaddrinfo(config_.ip.c_str(), destinationPort.c_str(), &hints, &result);
+        if (gai != 0) {
+            logInfo("UDP resolve failed for " + config_.ip + ":" + destinationPort);
+            return false;
+        }
+
+        for (addrinfo* candidate = result; candidate != nullptr; candidate = candidate->ai_next) {
+            socket_ = ::socket(candidate->ai_family, candidate->ai_socktype, candidate->ai_protocol);
+            if (socket_ == kInvalidSocket) {
+                continue;
+            }
+
+            targetLength_ = static_cast<socklen_compat_t>(candidate->ai_addrlen);
+            std::memcpy(&target_, candidate->ai_addr, candidate->ai_addrlen);
+            break;
+        }
+
+        freeaddrinfo(result);
+
+        if (socket_ == kInvalidSocket) {
+            logInfo("UDP socket failed for " + config_.ip + ":" + destinationPort + ": " + lastSocketError());
+            return false;
+        }
+
+        bindSourcePortIfConfigured();
+        setSocketSendTimeout(socket_, kSendTimeoutMs);
+        logInfo("UDP ready: " + config_.ip + ":" + destinationPort);
+        return true;
+    }
+
+    void close() override
+    {
+        closeSocket(socket_);
+        targetLength_ = 0;
+    }
+
+    bool send(bool active) override
+    {
+        const auto frames = asciiRelayFrames(active, config_.relayChannels);
+        for (const auto& frame : frames) {
+            const int sent = ::sendto(socket_,
+                frame.data(),
+                static_cast<int>(frame.size()),
+                0,
+                reinterpret_cast<const sockaddr*>(&target_),
+                targetLength_);
+            if (sent != static_cast<int>(frame.size())) {
+                logInfo("UDP send failed: " + lastSocketError());
+                return false;
+            }
+        }
+        logInfo(std::string("UDP sent ") + (active ? "ON" : "OFF") + ": " + (frames.empty() ? "<none>" : frames.front()));
+        return true;
+    }
+
+    std::string name() const override
+    {
+        return "udp";
+    }
+
+private:
+    static constexpr int kSendTimeoutMs = 50;
+
+    void bindSourcePortIfConfigured()
+    {
+        if (config_.sourcePort <= 0) {
+            return;
+        }
+
+        sockaddr_storage local {};
+        socklen_compat_t localLength = 0;
+        if (target_.ss_family == AF_INET) {
+            auto* addr = reinterpret_cast<sockaddr_in*>(&local);
+            addr->sin_family = AF_INET;
+            addr->sin_addr.s_addr = htonl(INADDR_ANY);
+            addr->sin_port = htons(static_cast<unsigned short>(config_.sourcePort));
+            localLength = sizeof(sockaddr_in);
+        } else if (target_.ss_family == AF_INET6) {
+            auto* addr = reinterpret_cast<sockaddr_in6*>(&local);
+            addr->sin6_family = AF_INET6;
+            addr->sin6_port = htons(static_cast<unsigned short>(config_.sourcePort));
+            localLength = sizeof(sockaddr_in6);
+        }
+
+        if (localLength == 0) {
+            return;
+        }
+
+        if (::bind(socket_, reinterpret_cast<const sockaddr*>(&local), localLength) != 0) {
+            logInfo("UDP source port bind failed for " + std::to_string(config_.sourcePort) + ": " + lastSocketError());
+        }
+    }
+
+    UdpConfig config_;
+    socket_t socket_ = kInvalidSocket;
+    sockaddr_storage target_ {};
+    socklen_compat_t targetLength_ = 0;
+#if defined(_WIN32)
+    bool wsaStarted_ = false;
+#endif
+};
+
 class TcpTransport final : public ITransport {
 public:
     ~TcpTransport() override
@@ -565,6 +703,8 @@ std::unique_ptr<ITransport> makeTransport(const Config& config)
     switch (config.transport) {
     case TransportKind::Serial:
         return std::make_unique<SerialTransport>();
+    case TransportKind::Udp:
+        return std::make_unique<UdpTransport>();
     case TransportKind::Tcp:
         return std::make_unique<TcpTransport>();
     case TransportKind::LogOnly:

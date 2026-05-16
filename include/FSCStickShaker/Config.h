@@ -2,11 +2,13 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace fsc::stickshaker {
 
 enum class TransportKind {
     Serial,
+    Udp,
     Tcp,
     LogOnly,
 };
@@ -24,11 +26,19 @@ struct TcpConfig {
     int port = 12345;
 };
 
+struct UdpConfig {
+    std::string ip = "192.168.1.199";
+    int sourcePort = 12345;
+    int destinationPort = 12345;
+    std::vector<int> relayChannels {5};
+};
+
 struct Config {
     bool enabled = true;
     bool debug = false;
-    TransportKind transport = TransportKind::Tcp;
+    TransportKind transport = TransportKind::Udp;
     SerialConfig serial;
+    UdpConfig udp;
     TcpConfig tcp;
 };
 

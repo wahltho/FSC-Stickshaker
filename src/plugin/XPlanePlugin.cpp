@@ -5,6 +5,7 @@
 #include "FSCStickShaker/ShakerController.h"
 
 #include "XPLMDataAccess.h"
+#include "XPLMMenus.h"
 #include "XPLMPlugin.h"
 #include "XPLMProcessing.h"
 #include "XPLMUtilities.h"
@@ -17,6 +18,7 @@
 #include <filesystem>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -29,20 +31,36 @@ constexpr const char* kPluginSignature = PLUGIN_SIGNATURE;
 constexpr const char* kPluginDescription = PLUGIN_DESC;
 constexpr const char* kPrefsFileName = PLUGIN_PREFS_FILE;
 constexpr const char* kCommandPrefix = PLUGIN_COMMAND_PREFIX;
-constexpr const char* kTriggerDataRefPath = "sim/cockpit2/annunciators/stall_warning";
+constexpr const char* kPrimaryTriggerDataRefPath = "sim/cockpit2/annunciators/stall_warning";
+constexpr std::array<const char*, 4> kTriggerDataRefPaths {
+    "sim/cockpit2/annunciators/stall_warning",
+    "sim/cockpit2/annunciators/stall_warning_ratio",
+    "laminar/B738/system/stall_1g",
+    "laminar/B738/push_button/stall_test1_press",
+};
 constexpr int kDependencyRetryIntervalSec = 5;
 constexpr bool kDeferUntilDatarefs = true;
+constexpr auto kManualPulseDuration = std::chrono::seconds(2);
 constexpr std::array<const char*, 2> kZiboTailnums {"ZB738", "B738"};
 
 ShakerController gController;
 std::filesystem::path gPrefsPath;
-XPLMDataRef gTriggerDataRef = nullptr;
+struct TriggerDataRef {
+    const char* path;
+    XPLMDataRef ref;
+};
+
+std::vector<TriggerDataRef> gTriggerDataRefs;
 XPLMCommandRef gReloadPrefsCommand = nullptr;
 XPLMCommandRef gTestOnCommand = nullptr;
 XPLMCommandRef gTestOffCommand = nullptr;
 XPLMCommandRef gTestPulseCommand = nullptr;
+XPLMMenuID gMenu = nullptr;
+int gMenuContainerIndex = -1;
 XPLMDataRef gTailnumDataRef = nullptr;
 bool gAutoTriggerReady = false;
+bool gManualOverrideActive = false;
+std::chrono::steady_clock::time_point gManualPulseEnd {};
 std::chrono::steady_clock::time_point gNextResolveAttempt {};
 
 std::string trim(std::string value)
@@ -103,16 +121,38 @@ bool isZiboPluginLoaded()
     return XPLMFindPluginBySignature("zibomod.by.Zibo") != XPLM_NO_PLUGIN_ID;
 }
 
+void resolveTriggerDataRefs()
+{
+    gTriggerDataRefs.clear();
+    for (const char* path : kTriggerDataRefPaths) {
+        if (XPLMDataRef ref = XPLMFindDataRef(path)) {
+            gTriggerDataRefs.push_back({path, ref});
+        }
+    }
+}
+
+std::string triggerSourceSummary()
+{
+    std::string summary;
+    for (const auto& trigger : gTriggerDataRefs) {
+        if (!summary.empty()) {
+            summary += ",";
+        }
+        summary += trigger.path;
+    }
+    return summary.empty() ? "<none>" : summary;
+}
+
 bool resolveRuntimeDependencies(bool logMissing)
 {
     gTailnumDataRef = XPLMFindDataRef("sim/aircraft/view/acf_tailnum");
-    gTriggerDataRef = XPLMFindDataRef(kTriggerDataRefPath);
+    resolveTriggerDataRefs();
 
     const std::string tailnum = readTailnum();
     const bool tailRefReady = gTailnumDataRef != nullptr;
     const bool tailMatches = !tailnum.empty() && isZiboTailnum(tailnum);
     const bool ziboReady = isZiboPluginLoaded();
-    const bool triggerReady = gTriggerDataRef != nullptr;
+    const bool triggerReady = !gTriggerDataRefs.empty();
 
     gAutoTriggerReady = tailRefReady && tailMatches && ziboReady && triggerReady;
     if (!gAutoTriggerReady && logMissing) {
@@ -121,10 +161,11 @@ bool resolveRuntimeDependencies(bool logMissing)
             ", tail=" + (tailnum.empty() ? "<none>" : tailnum) +
             ", tail_match=" + std::string(tailMatches ? "1" : "0") +
             ", zibo_plugin=" + std::string(ziboReady ? "1" : "0") +
-            ", trigger_dataref=" + std::string(triggerReady ? "1" : "0"));
+            ", trigger_dataref=" + std::string(triggerReady ? "1" : "0") +
+            ", sources=" + triggerSourceSummary());
     }
     if (gAutoTriggerReady && logMissing) {
-        xplaneLog("auto trigger ready: tail=" + tailnum + ", source=" + kTriggerDataRefPath);
+        xplaneLog("auto trigger ready: tail=" + tailnum + ", sources=" + triggerSourceSummary());
     }
     return gAutoTriggerReady;
 }
@@ -150,17 +191,57 @@ void reloadPrefs()
 
 bool readTrigger()
 {
-    if (!gTriggerDataRef) {
-        return false;
+    for (const auto& trigger : gTriggerDataRefs) {
+        const XPLMDataTypeID types = XPLMGetDataRefTypes(trigger.ref);
+        if ((types & xplmType_Int) != 0 && XPLMGetDatai(trigger.ref) != 0) {
+            return true;
+        }
+        if ((types & xplmType_Float) != 0 && XPLMGetDataf(trigger.ref) > 0.5f) {
+            return true;
+        }
     }
+    return false;
+}
 
-    return XPLMGetDatai(gTriggerDataRef) != 0;
+void runReloadPrefs()
+{
+    reloadPrefs();
+}
+
+void runTestOn()
+{
+    gManualOverrideActive = true;
+    gManualPulseEnd = {};
+    gController.forceOn();
+}
+
+void runTestOff()
+{
+    gManualOverrideActive = false;
+    gManualPulseEnd = {};
+    gController.forceOff();
+}
+
+void runTestPulse()
+{
+    gManualOverrideActive = true;
+    gManualPulseEnd = std::chrono::steady_clock::now() + kManualPulseDuration;
+    gController.forceOn();
 }
 
 float flightLoopCallback(float, float, int, void*)
 {
+    const auto now = std::chrono::steady_clock::now();
+    if (gManualOverrideActive) {
+        if (gManualPulseEnd != std::chrono::steady_clock::time_point {} && now >= gManualPulseEnd) {
+            gManualOverrideActive = false;
+            gManualPulseEnd = {};
+            gController.forceOff();
+        }
+        return 0.1f;
+    }
+
     if (!gAutoTriggerReady) {
-        const auto now = std::chrono::steady_clock::now();
         if (now >= gNextResolveAttempt) {
             const bool ready = resolveRuntimeDependencies(true);
             gNextResolveAttempt = now + std::chrono::seconds(kDependencyRetryIntervalSec);
@@ -185,16 +266,37 @@ int commandHandler(XPLMCommandRef command, XPLMCommandPhase phase, void*)
     }
 
     if (command == gReloadPrefsCommand) {
-        reloadPrefs();
+        runReloadPrefs();
     } else if (command == gTestOnCommand) {
-        gController.forceOn();
+        runTestOn();
     } else if (command == gTestOffCommand) {
-        gController.forceOff();
+        runTestOff();
     } else if (command == gTestPulseCommand) {
-        gController.pulse();
+        runTestPulse();
     }
 
     return 1;
+}
+
+void menuHandler(void*, void* itemRef)
+{
+    const auto item = reinterpret_cast<std::intptr_t>(itemRef);
+    switch (item) {
+    case 1:
+        runTestOn();
+        break;
+    case 2:
+        runTestOff();
+        break;
+    case 3:
+        runTestPulse();
+        break;
+    case 4:
+        runReloadPrefs();
+        break;
+    default:
+        break;
+    }
 }
 
 void registerCommands()
@@ -227,6 +329,37 @@ void unregisterCommands()
     }
 }
 
+void createMenu()
+{
+    if (gMenu) {
+        return;
+    }
+
+    const XPLMMenuID pluginsMenu = XPLMFindPluginsMenu();
+    gMenuContainerIndex = XPLMAppendMenuItem(pluginsMenu, "FSC Stick Shaker", nullptr, 1);
+    gMenu = XPLMCreateMenu("FSC Stick Shaker", pluginsMenu, gMenuContainerIndex, menuHandler, nullptr);
+    XPLMAppendMenuItem(gMenu, "Test On", reinterpret_cast<void*>(1), 1);
+    XPLMAppendMenuItem(gMenu, "Test Off", reinterpret_cast<void*>(2), 1);
+    XPLMAppendMenuItem(gMenu, "Test Pulse", reinterpret_cast<void*>(3), 1);
+    XPLMAppendMenuSeparator(gMenu);
+    XPLMAppendMenuItem(gMenu, "Reload Preferences", reinterpret_cast<void*>(4), 1);
+}
+
+void destroyMenu()
+{
+    if (!gMenu) {
+        return;
+    }
+
+    XPLMDestroyMenu(gMenu);
+    gMenu = nullptr;
+
+    if (gMenuContainerIndex >= 0) {
+        XPLMRemoveMenuItem(XPLMFindPluginsMenu(), gMenuContainerIndex);
+        gMenuContainerIndex = -1;
+    }
+}
+
 } // namespace
 
 PLUGIN_API int XPluginStart(char* outName, char* outSignature, char* outDescription)
@@ -242,12 +375,14 @@ PLUGIN_API int XPluginStart(char* outName, char* outSignature, char* outDescript
     fsc::stickshaker::setLogSink(xplaneLog);
     xplaneLog(std::string("Plugin version ") + kPluginVersion);
     registerCommands();
+    createMenu();
     return 1;
 }
 
 PLUGIN_API void XPluginStop()
 {
     XPLMUnregisterFlightLoopCallback(flightLoopCallback, nullptr);
+    destroyMenu();
     unregisterCommands();
     gController.shutdown();
 }

@@ -4,6 +4,7 @@
 #include <cctype>
 #include <fstream>
 #include <map>
+#include <sstream>
 #include <stdexcept>
 
 namespace fsc::stickshaker {
@@ -46,6 +47,32 @@ int parseInt(const std::string& value, int fallback)
     } catch (const std::exception&) {
         return fallback;
     }
+}
+
+std::vector<int> parseRelayChannels(const std::string& value, const std::vector<int>& fallback)
+{
+    std::vector<int> channels;
+    std::stringstream input(value);
+    std::string token;
+    while (std::getline(input, token, ',')) {
+        const int channel = parseInt(token, 0);
+        if (channel >= 1 && channel <= 8) {
+            channels.push_back(channel);
+        }
+    }
+    return channels.empty() ? fallback : channels;
+}
+
+std::string joinRelayChannels(const std::vector<int>& channels)
+{
+    std::ostringstream output;
+    for (std::size_t i = 0; i < channels.size(); ++i) {
+        if (i != 0) {
+            output << ',';
+        }
+        output << channels[i];
+    }
+    return output.str();
 }
 
 std::map<std::string, std::string> readKeyValues(const std::filesystem::path& path)
@@ -93,6 +120,8 @@ std::string toString(TransportKind kind)
     switch (kind) {
     case TransportKind::Serial:
         return "serial";
+    case TransportKind::Udp:
+        return "udp";
     case TransportKind::Tcp:
         return "tcp";
     case TransportKind::LogOnly:
@@ -107,7 +136,10 @@ TransportKind transportKindFromString(const std::string& value)
     if (normalized == "serial") {
         return TransportKind::Serial;
     }
-    if (normalized == "tcp") {
+    if (normalized == "udp" || normalized == "tcp") {
+        return TransportKind::Udp;
+    }
+    if (normalized == "tcp_stream") {
         return TransportKind::Tcp;
     }
     return TransportKind::LogOnly;
@@ -128,6 +160,15 @@ Config loadConfig(const std::filesystem::path& path)
     config.serial.parity = lower(getString(values, "shaker.serial.parity", config.serial.parity));
     config.serial.stopBits = parseInt(getString(values, "shaker.serial.stop_bits", ""), config.serial.stopBits);
 
+    config.udp.ip = getString(values, "shaker.udp.ip", getString(values, "shaker.tcp.ip", config.udp.ip));
+    config.udp.sourcePort = parseInt(getString(values, "shaker.udp.source_port", ""), config.udp.sourcePort);
+    config.udp.destinationPort = parseInt(
+        getString(values, "shaker.udp.destination_port", getString(values, "shaker.tcp.port", "")),
+        config.udp.destinationPort);
+    config.udp.relayChannels = parseRelayChannels(
+        getString(values, "shaker.udp.relay_channels", getString(values, "PortNumber", "")),
+        config.udp.relayChannels);
+
     config.tcp.ip = getString(values, "shaker.tcp.ip", config.tcp.ip);
     config.tcp.port = parseInt(getString(values, "shaker.tcp.port", ""), config.tcp.port);
 
@@ -140,7 +181,7 @@ void saveDefaultConfig(const std::filesystem::path& path, const Config& config)
 
     std::ofstream output(path);
     output << "# FSC Stick Shaker preferences\n"
-           << "# Transport is one of: log, serial, tcp\n"
+           << "# Transport is one of: log, serial, udp\n"
            << "shaker.enabled=" << (config.enabled ? 1 : 0) << '\n'
            << "shaker.transport=" << toString(config.transport) << '\n'
            << "shaker.serial.port=" << config.serial.port << '\n'
@@ -148,6 +189,10 @@ void saveDefaultConfig(const std::filesystem::path& path, const Config& config)
            << "shaker.serial.data_bits=" << config.serial.dataBits << '\n'
            << "shaker.serial.parity=" << config.serial.parity << '\n'
            << "shaker.serial.stop_bits=" << config.serial.stopBits << '\n'
+           << "shaker.udp.ip=" << config.udp.ip << '\n'
+           << "shaker.udp.source_port=" << config.udp.sourcePort << '\n'
+           << "shaker.udp.destination_port=" << config.udp.destinationPort << '\n'
+           << "shaker.udp.relay_channels=" << joinRelayChannels(config.udp.relayChannels) << '\n'
            << "shaker.tcp.ip=" << config.tcp.ip << '\n'
            << "shaker.tcp.port=" << config.tcp.port << '\n'
            << "shaker.debug=" << (config.debug ? 1 : 0) << '\n';

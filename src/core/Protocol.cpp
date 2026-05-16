@@ -10,6 +10,31 @@ std::vector<std::uint8_t> serialFrame(bool active)
     return {0xFF, 0x01, static_cast<std::uint8_t>(active ? 0x01 : 0x00)};
 }
 
+std::vector<std::string> asciiRelayFrames(bool active, const std::vector<int>& channels)
+{
+    const char state = active ? '1' : '0';
+    std::vector<std::string> frames;
+    frames.reserve(channels.size());
+    for (const int channel : channels) {
+        if (channel < 1 || channel > 99) {
+            continue;
+        }
+        std::ostringstream frame;
+        frame << "FF" << std::setw(2) << std::setfill('0') << channel << '0' << state;
+        frames.push_back(frame.str());
+    }
+    return frames;
+}
+
+std::vector<std::vector<std::uint8_t>> relayFrames(bool active)
+{
+    const auto state = static_cast<std::uint8_t>(active ? 0x01 : 0x00);
+    return {
+        {0xFF, 0x01, state},
+        {0xFF, 0x02, state},
+    };
+}
+
 std::vector<std::string> tcpFrames(bool active)
 {
     const char state = active ? '1' : '0';
