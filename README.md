@@ -2,15 +2,16 @@
 
 Standalone X-Plane plugin for FSC Stick Shaker hardware.
 
-Version: `0.7`
+Version: `0.8`
 
 Plugin signature: `com.fscstickshaker`
 
-The plugin is intended for the Zibo 737 and drives the stick shaker from X-Plane's stall warning state. It is independent from the FSC throttle quadrant plugin and does not require CPFlight integration.
+The plugin is intended for the Zibo 737 and drives the stick shaker from Zibo's captain/first officer yoke-shake state. It is independent from the FSC throttle quadrant plugin and does not require CPFlight integration.
 
 ## Features
 
-- Drives FSC Stick Shaker hardware from X-Plane/Zibo stall warning.
+- Drives FSC Stick Shaker hardware from Zibo's `laminar/autopilot/yoke_shake_cpt` and `laminar/autopilot/yoke_shake_fo` outputs.
+- Suppresses automatic stall activation while Zibo reports ground state through `laminar/B738/air_ground_sensor`, but still follows the Zibo stall test active states on the ground.
 - Supports UDP/IP and serial COM transport.
 - Uses a simple ON/OFF output model.
 - Gates automatic operation to Zibo aircraft tail numbers:

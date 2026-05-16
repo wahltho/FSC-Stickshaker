@@ -16,6 +16,7 @@
 #include <cctype>
 #include <cstring>
 #include <filesystem>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -31,12 +32,14 @@ constexpr const char* kPluginSignature = PLUGIN_SIGNATURE;
 constexpr const char* kPluginDescription = PLUGIN_DESC;
 constexpr const char* kPrefsFileName = PLUGIN_PREFS_FILE;
 constexpr const char* kCommandPrefix = PLUGIN_COMMAND_PREFIX;
-constexpr const char* kPrimaryTriggerDataRefPath = "sim/cockpit2/annunciators/stall_warning";
-constexpr std::array<const char*, 4> kTriggerDataRefPaths {
-    "sim/cockpit2/annunciators/stall_warning",
-    "sim/cockpit2/annunciators/stall_warning_ratio",
-    "laminar/B738/system/stall_1g",
-    "laminar/B738/push_button/stall_test1_press",
+constexpr const char* kAirGroundSensorDataRefPath = "laminar/B738/air_ground_sensor";
+constexpr std::array<const char*, 2> kStallTestActiveDataRefPaths {
+    "laminar/B738/push_button/stall_test_active1",
+    "laminar/B738/push_button/stall_test_active2",
+};
+constexpr std::array<const char*, 2> kTriggerDataRefPaths {
+    "laminar/autopilot/yoke_shake_cpt",
+    "laminar/autopilot/yoke_shake_fo",
 };
 constexpr int kDependencyRetryIntervalSec = 5;
 constexpr bool kDeferUntilDatarefs = true;
@@ -55,6 +58,7 @@ struct TriggerDataRef {
 };
 
 std::vector<TriggerDataRef> gTriggerDataRefs;
+std::vector<TriggerDataRef> gStallTestActiveDataRefs;
 XPLMCommandRef gReloadPrefsCommand = nullptr;
 XPLMCommandRef gTestOnCommand = nullptr;
 XPLMCommandRef gTestOffCommand = nullptr;
@@ -62,8 +66,10 @@ XPLMCommandRef gTestPulseCommand = nullptr;
 XPLMMenuID gMenu = nullptr;
 int gMenuContainerIndex = -1;
 XPLMDataRef gTailnumDataRef = nullptr;
+XPLMDataRef gAirGroundSensorDataRef = nullptr;
 bool gAutoTriggerReady = false;
 bool gManualOverrideActive = false;
+bool gLastAutoTriggerActive = false;
 std::chrono::steady_clock::time_point gManualPulseEnd {};
 std::chrono::steady_clock::time_point gNextResolveAttempt {};
 
@@ -133,6 +139,45 @@ void resolveTriggerDataRefs()
             gTriggerDataRefs.push_back({path, ref});
         }
     }
+
+    gStallTestActiveDataRefs.clear();
+    for (const char* path : kStallTestActiveDataRefPaths) {
+        if (XPLMDataRef ref = XPLMFindDataRef(path)) {
+            gStallTestActiveDataRefs.push_back({path, ref});
+        }
+    }
+}
+
+float readDataRefValue(XPLMDataRef ref)
+{
+    const XPLMDataTypeID types = XPLMGetDataRefTypes(ref);
+    if ((types & xplmType_Float) != 0) {
+        return XPLMGetDataf(ref);
+    }
+    if ((types & xplmType_Int) != 0) {
+        return static_cast<float>(XPLMGetDatai(ref));
+    }
+    return 0.0f;
+}
+
+float readTriggerValue(const TriggerDataRef& trigger)
+{
+    return readDataRefValue(trigger.ref);
+}
+
+bool isAirborne()
+{
+    return gAirGroundSensorDataRef && readDataRefValue(gAirGroundSensorDataRef) <= 0.5f;
+}
+
+bool isStallTestActive()
+{
+    for (const auto& test : gStallTestActiveDataRefs) {
+        if (readTriggerValue(test) > 0.5f) {
+            return true;
+        }
+    }
+    return false;
 }
 
 std::string triggerSourceSummary()
@@ -144,12 +189,50 @@ std::string triggerSourceSummary()
         }
         summary += trigger.path;
     }
+    if (gAirGroundSensorDataRef) {
+        if (!summary.empty()) {
+            summary += ",";
+        }
+        summary += kAirGroundSensorDataRefPath;
+    }
+    for (const auto& test : gStallTestActiveDataRefs) {
+        if (!summary.empty()) {
+            summary += ",";
+        }
+        summary += test.path;
+    }
     return summary.empty() ? "<none>" : summary;
+}
+
+std::string triggerValueSummary()
+{
+    std::ostringstream summary;
+    for (std::size_t i = 0; i < gTriggerDataRefs.size(); ++i) {
+        if (i != 0) {
+            summary << ",";
+        }
+        summary << gTriggerDataRefs[i].path << '=' << readTriggerValue(gTriggerDataRefs[i]);
+    }
+    if (gAirGroundSensorDataRef) {
+        if (!gTriggerDataRefs.empty()) {
+            summary << ",";
+        }
+        summary << kAirGroundSensorDataRefPath << '=' << readDataRefValue(gAirGroundSensorDataRef);
+    }
+    for (const auto& test : gStallTestActiveDataRefs) {
+        if (!gTriggerDataRefs.empty() || gAirGroundSensorDataRef || &test != &gStallTestActiveDataRefs.front()) {
+            summary << ",";
+        }
+        summary << test.path << '=' << readTriggerValue(test);
+    }
+    const std::string text = summary.str();
+    return text.empty() ? "<none>" : text;
 }
 
 bool resolveRuntimeDependencies(bool logMissing)
 {
     gTailnumDataRef = XPLMFindDataRef("sim/aircraft/view/acf_tailnum");
+    gAirGroundSensorDataRef = XPLMFindDataRef(kAirGroundSensorDataRefPath);
     resolveTriggerDataRefs();
 
     const std::string tailnum = readTailnum();
@@ -157,8 +240,10 @@ bool resolveRuntimeDependencies(bool logMissing)
     const bool tailMatches = !tailnum.empty() && isZiboTailnum(tailnum);
     const bool ziboReady = isZiboPluginLoaded();
     const bool triggerReady = !gTriggerDataRefs.empty();
+    const bool airGroundReady = gAirGroundSensorDataRef != nullptr;
+    const bool stallTestReady = gStallTestActiveDataRefs.size() == kStallTestActiveDataRefPaths.size();
 
-    gAutoTriggerReady = tailRefReady && tailMatches && ziboReady && triggerReady;
+    gAutoTriggerReady = tailRefReady && tailMatches && ziboReady && triggerReady && airGroundReady && stallTestReady;
     if (!gAutoTriggerReady && logMissing) {
         xplaneLog(
             "auto trigger deferred: tail_ref=" + std::string(tailRefReady ? "1" : "0") +
@@ -166,6 +251,8 @@ bool resolveRuntimeDependencies(bool logMissing)
             ", tail_match=" + std::string(tailMatches ? "1" : "0") +
             ", zibo_plugin=" + std::string(ziboReady ? "1" : "0") +
             ", trigger_dataref=" + std::string(triggerReady ? "1" : "0") +
+            ", air_ground_dataref=" + std::string(airGroundReady ? "1" : "0") +
+            ", stall_test_datarefs=" + std::string(stallTestReady ? "1" : "0") +
             ", sources=" + triggerSourceSummary());
     }
     if (gAutoTriggerReady && logMissing) {
@@ -188,6 +275,7 @@ void reloadPrefs()
     Config config = fsc::stickshaker::loadConfig(gPrefsPath);
     gController.configure(std::move(config));
     gAutoTriggerReady = false;
+    gLastAutoTriggerActive = false;
     gNextResolveAttempt = {};
     resolveRuntimeDependencies(true);
     xplaneLog("loaded prefs: " + gPrefsPath.string());
@@ -195,12 +283,12 @@ void reloadPrefs()
 
 bool readTrigger()
 {
+    if (!isAirborne() && !isStallTestActive()) {
+        return false;
+    }
+
     for (const auto& trigger : gTriggerDataRefs) {
-        const XPLMDataTypeID types = XPLMGetDataRefTypes(trigger.ref);
-        if ((types & xplmType_Int) != 0 && XPLMGetDatai(trigger.ref) != 0) {
-            return true;
-        }
-        if ((types & xplmType_Float) != 0 && XPLMGetDataf(trigger.ref) > 0.5f) {
+        if (readTriggerValue(trigger) > 0.5f) {
             return true;
         }
     }
@@ -259,7 +347,12 @@ float flightLoopCallback(float, float, int, void*)
         }
     }
 
-    gController.updateTrigger(readTrigger());
+    const bool triggerActive = readTrigger();
+    if (triggerActive != gLastAutoTriggerActive) {
+        xplaneLog(std::string("auto trigger ") + (triggerActive ? "ON: " : "OFF: ") + triggerValueSummary());
+        gLastAutoTriggerActive = triggerActive;
+    }
+    gController.updateTrigger(triggerActive);
     return 0.1f;
 }
 
